@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, memo, ReactNode } from 'react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 
 interface TextRevealCardProps {
@@ -60,11 +60,7 @@ export const TextRevealCard = ({ text, revealText, children, className }: TextRe
       <div className="h-40 relative flex items-center overflow-hidden">
         <motion.div
           style={{ width: '100%' }}
-          animate={
-            isMouseOver
-              ? { opacity: widthPercentage > 0 ? 1 : 0, clipPath: `inset(0 ${100 - widthPercentage}% 0 0)` }
-              : { clipPath: `inset(0 ${100 - widthPercentage}% 0 0)` }
-          }
+          animate={isMouseOver ? { opacity: widthPercentage > 0 ? 1 : 0, clipPath: `inset(0 ${100 - widthPercentage}% 0 0)` } : { clipPath: `inset(0 ${100 - widthPercentage}% 0 0)` }}
           transition={isMouseOver ? { duration: 0 } : { duration: 0.4 }}
           className="absolute bg-cosmos-deep z-20 will-change-transform"
         >
@@ -100,23 +96,9 @@ const Stars = () => {
       {Array.from({ length: 60 }).map((_, i) => (
         <motion.span
           key={`star-${i}`}
-          animate={{
-            top: `calc(${random() * 100}% + ${randomMove()}px)`,
-            left: `calc(${random() * 100}% + ${randomMove()}px)`,
-            opacity: randomOpacity(),
-            scale: [1, 1.2, 0],
-          }}
+          animate={{ top: `calc(${random() * 100}% + ${randomMove()}px)`, left: `calc(${random() * 100}% + ${randomMove()}px)`, opacity: randomOpacity(), scale: [1, 1.2, 0] }}
           transition={{ duration: random() * 10 + 20, repeat: Infinity, ease: 'linear' }}
-          style={{
-            position: 'absolute',
-            top: `${random() * 100}%`,
-            left: `${random() * 100}%`,
-            width: '2px',
-            height: '2px',
-            backgroundColor: '#ffd4b0',
-            borderRadius: '50%',
-            zIndex: 1,
-          }}
+          style={{ position: 'absolute', top: `${random() * 100}%`, left: `${random() * 100}%`, width: '2px', height: '2px', backgroundColor: '#ffd4b0', borderRadius: '50%', zIndex: 1 }}
         />
       ))}
     </div>
@@ -126,4 +108,5 @@ const Stars = () => {
 const MemoizedStars = memo(Stars);
 
 export default TextRevealCard;
+
 
