@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, ReactNode } from 'react';
-import { motion, useTransform, useScroll, useSpring } from 'framer-motion';
+import { motion, useTransform, useScroll, useSpring } from 'motion/react';
 import { cn } from '@/lib/utils';
 
 interface TracingBeamProps {
@@ -58,3 +58,4 @@ export const TracingBeam = ({ children, className }: TracingBeamProps) => {
 };
 
 export default TracingBeam;
+
