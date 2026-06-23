@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Renderer, Program, Mesh, Color, Triangle } from 'ogl';
 
 const VERT = `#version 300 es
@@ -121,41 +121,15 @@ export default function Aurora(props: AuroraProps) {
 
   const ctnDom = useRef<HTMLDivElement>(null);
 
-  // FIX: Track WebGL failure so we can silently degrade instead of crashing.
-  // Aurora uses WebGL2 (#version 300 es). If the browser/environment doesn't
-  // support WebGL2 (some Vercel edge preview browsers, headless Chrome in CI,
-  // or low-end mobile GPUs), the Renderer constructor throws and crashes the
-  // whole React tree, producing a blank white screen.
-  const [webglFailed, setWebglFailed] = useState(false);
-
   useEffect(() => {
     const ctn = ctnDom.current;
     if (!ctn) return;
 
-    // FIX: Pre-flight WebGL2 check before constructing the OGL Renderer.
-    // If WebGL2 is unsupported, we set the failure flag and bail cleanly.
-    const testCanvas = document.createElement('canvas');
-    const testCtx = testCanvas.getContext('webgl2');
-    if (!testCtx) {
-      setWebglFailed(true);
-      return;
-    }
-
-    let renderer: Renderer | undefined;
-    let animateId = 0;
-
-    try {
-      renderer = new Renderer({
-        alpha: true,
-        premultipliedAlpha: true,
-        antialias: true,
-      });
-    } catch (err) {
-      // WebGL context creation failed — degrade silently
-      setWebglFailed(true);
-      return;
-    }
-
+    const renderer = new Renderer({
+      alpha: true,
+      premultipliedAlpha: true,
+      antialias: true,
+    });
     const gl = renderer.gl;
     gl.clearColor(0, 0, 0, 0);
     gl.enable(gl.BLEND);
@@ -168,7 +142,7 @@ export default function Aurora(props: AuroraProps) {
       if (!ctn) return;
       const width = ctn.offsetWidth;
       const height = ctn.offsetHeight;
-      renderer!.setSize(width, height);
+      renderer.setSize(width, height);
       if (program) {
         program.uniforms.uResolution.value = [width, height];
       }
@@ -185,29 +159,22 @@ export default function Aurora(props: AuroraProps) {
       return [c.r, c.g, c.b];
     });
 
-    try {
-      program = new Program(gl, {
-        vertex: VERT,
-        fragment: FRAG,
-        uniforms: {
-          uTime: { value: 0 },
-          uAmplitude: { value: amplitude },
-          uColorStops: { value: colorStopsArray },
-          uResolution: { value: [ctn.offsetWidth, ctn.offsetHeight] },
-          uBlend: { value: blend },
-        },
-      });
-    } catch (err) {
-      // Shader compilation failed — degrade silently
-      setWebglFailed(true);
-      window.removeEventListener('resize', resize);
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
-      return;
-    }
+    program = new Program(gl, {
+      vertex: VERT,
+      fragment: FRAG,
+      uniforms: {
+        uTime: { value: 0 },
+        uAmplitude: { value: amplitude },
+        uColorStops: { value: colorStopsArray },
+        uResolution: { value: [ctn.offsetWidth, ctn.offsetHeight] },
+        uBlend: { value: blend },
+      },
+    });
 
     const mesh = new Mesh(gl, { geometry, program });
     ctn.appendChild(gl.canvas);
 
+    let animateId = 0;
     const update = (t: number) => {
       animateId = requestAnimationFrame(update);
       const { speed = 0.4 } = propsRef.current;
@@ -220,7 +187,7 @@ export default function Aurora(props: AuroraProps) {
           const c = new Color(hex);
           return [c.r, c.g, c.b];
         });
-        renderer!.render({ scene: mesh });
+        renderer.render({ scene: mesh });
       }
     };
     animateId = requestAnimationFrame(update);
@@ -236,19 +203,6 @@ export default function Aurora(props: AuroraProps) {
       gl.getExtension('WEBGL_lose_context')?.loseContext();
     };
   }, [amplitude, blend, colorStops]);
-
-  // FIX: Render a CSS gradient fallback when WebGL is unavailable instead of nothing.
-  if (webglFailed) {
-    return (
-      <div
-        className="w-full h-full"
-        style={{
-          background:
-            'radial-gradient(ellipse at 30% 60%, rgba(163,128,255,0.15) 0%, transparent 60%), radial-gradient(ellipse at 70% 30%, rgba(255,155,106,0.12) 0%, transparent 60%)',
-        }}
-      />
-    );
-  }
 
   return <div ref={ctnDom} className="w-full h-full" />;
 }
