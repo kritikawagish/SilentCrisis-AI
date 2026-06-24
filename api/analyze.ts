@@ -201,7 +201,7 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       ...result,
       sentiment: sentimentResult,
-      engine: 'SilentCrisis AI Risk Engine v1.0',
+      engine: 'SilentCrisis Risk Engine v1.0',
       model: 'Z-score deviation + convergence clustering + temporal analysis',
     });
   } catch (error: any) {
