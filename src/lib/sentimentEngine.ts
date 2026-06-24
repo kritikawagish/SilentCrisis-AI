@@ -1,5 +1,5 @@
 /**
- * SilentCrisis AI — Client-Side Sentiment Analysis Engine
+ * SilentCrisis — Client-Side Sentiment Analysis Engine
  *
  * Uses AFINN-165 lexicon for real NLP sentiment scoring.
  * No API keys needed — runs entirely in the browser.
@@ -204,3 +204,4 @@ export function analyzeSentiment(text: string): SentimentResult {
     word_count: tokens.length,
   };
 }
+
