@@ -1,296 +1,191 @@
 /**
- * SilentCrisis — Core Risk Computation Engine
+ * SilentCrisis — Intervention Matching Engine
  *
- * This is the REAL implementation of the Composite Risk Index
- * described in the submission PDF:
+ * Selects the lightest effective intervention based on:
+ * 1. Risk tier (WATCHING → ELEVATED → CRITICAL)
+ * 2. Top deviating signal pattern
+ * 3. User's intervention history (what they've engaged with before)
  *
- *   Risk Index = min(100, Σ(Zᵢ × wᵢ) × temporal_cluster_factor)
- *
- * - Per-signal Z-score deviation from personal baseline
- * - Weighted convergence scoring
- * - Temporal cluster analysis (sustained > spike)
- * - Three-tier classification: WATCHING / ELEVATED / CRITICAL
+ * Backed by CBT, ACT, and mindfulness evidence base.
  */
 
-// ─── Types ───────────────────────────────────────────────────────
+import type { RiskTier, SignalDeviation } from './riskEngine';
 
-export interface SignalInput {
-  sleep_hours: number;        // hours slept last night
-  meetings: number;           // number of meetings today
-  response_time_min: number;  // avg response time in minutes
-  breaks: number;             // number of breaks taken
-  mood_score: number;         // 0-100 sentiment score (from NLP or self-report)
-  task_switches: number;      // context switches today
+export interface Intervention {
+  id: string;
+  title: string;
+  duration: string;
+  description: string;
+  tier: 'Level 1' | 'Level 2' | 'Level 3';
+  category: 'breathing' | 'cognitive' | 'calendar' | 'social' | 'reflection' | 'professional';
+  triggerSignals: string[];     // which signals this intervention targets
+  instructions?: string[];     // step-by-step guide
 }
 
-export interface SignalBaseline {
-  mean: number;
-  std: number;
-  trend: number;  // slope of last 7 days (positive = increasing)
-}
+// ─── Intervention Library ────────────────────────────────────────
 
-export interface BaselineProfile {
-  sleep_hours: SignalBaseline;
-  meetings: SignalBaseline;
-  response_time_min: SignalBaseline;
-  breaks: SignalBaseline;
-  mood_score: SignalBaseline;
-  task_switches: SignalBaseline;
-  days_tracked: number;
-}
+export const INTERVENTION_LIBRARY: Intervention[] = [
+  {
+    id: 'box-breathing',
+    title: 'Box Breathing',
+    duration: '4 min',
+    description: 'Slow cardiac coherence reset. Activates parasympathetic nervous system to reduce acute stress.',
+    tier: 'Level 1',
+    category: 'breathing',
+    triggerSignals: ['response_time_min', 'task_switches', 'mood_score'],
+    instructions: [
+      'Find a comfortable position. Close your eyes if that feels right.',
+      'Inhale slowly through your nose for 4 seconds.',
+      'Hold your breath gently for 4 seconds.',
+      'Exhale slowly through your mouth for 4 seconds.',
+      'Hold empty for 4 seconds.',
+      'Repeat for 4 cycles. Notice the quiet.',
+    ],
+  },
+  {
+    id: 'cognitive-reframe',
+    title: 'Cognitive Reframe',
+    duration: '6 min',
+    description: 'Guided thought restructuring for rumination patterns. Based on CBT cognitive restructuring protocol.',
+    tier: 'Level 2',
+    category: 'cognitive',
+    triggerSignals: ['mood_score', 'sleep_hours'],
+    instructions: [
+      'Name one thought that has been circling in your mind today.',
+      'Write it down exactly as your mind says it.',
+      'Ask: "Is this thought a fact, or an interpretation?"',
+      'Ask: "What would I say to a friend thinking this?"',
+      'Write a more balanced version of the thought.',
+      'Notice how the reframe feels in your body.',
+    ],
+  },
+  {
+    id: 'calendar-protect',
+    title: 'Calendar Protect',
+    duration: 'instant',
+    description: 'Block 90 minutes of recovery time on your most overloaded day this week.',
+    tier: 'Level 1',
+    category: 'calendar',
+    triggerSignals: ['meetings', 'breaks'],
+    instructions: [
+      'Look at your calendar for the next 3 days.',
+      'Find the day with the most back-to-back meetings.',
+      'Block a 90-minute "Focus Time" block on that day.',
+      'Set it as "busy" — no meeting can overwrite it.',
+      'Use the time for a walk, rest, or single-task deep work.',
+    ],
+  },
+  {
+    id: 'reflection-prompt',
+    title: 'Reflection Prompt',
+    duration: '3 min',
+    description: 'A single, gentle question delivered at the right moment. Based on ACT defusion techniques.',
+    tier: 'Level 1',
+    category: 'reflection',
+    triggerSignals: ['mood_score', 'response_time_min'],
+    instructions: [
+      'Pause for 30 seconds. Take one deep breath.',
+      'Consider this question:',
+      '"What is one thing I am carrying right now that I could set down — even briefly?"',
+      'Don\'t answer it analytically. Let it sit.',
+      'Notice what surfaces.',
+    ],
+  },
+  {
+    id: 'connection-nudge',
+    title: 'Connection Nudge',
+    duration: '—',
+    description: 'Gentle suggestion to reach out to a trusted person. Social connection is a buffer against isolation.',
+    tier: 'Level 2',
+    category: 'social',
+    triggerSignals: ['response_time_min', 'breaks', 'mood_score'],
+    instructions: [
+      'Think of one person who makes you feel genuinely heard.',
+      'Send them a brief message — even just "hey, thinking of you."',
+      'No expectation of a deep conversation. Just connection.',
+      'Social contact reduces cortisol by up to 20% (meta-analysis).',
+    ],
+  },
+  {
+    id: 'sleep-reset',
+    title: 'Sleep Window Reset',
+    duration: '10 min tonight',
+    description: 'Guided wind-down protocol to reset drifting sleep onset. Addresses the #1 early-warning signal.',
+    tier: 'Level 2',
+    category: 'reflection',
+    triggerSignals: ['sleep_hours'],
+    instructions: [
+      'Set a target bedtime tonight that is 30 min earlier than last night.',
+      'One hour before bed: no screens. Dim lights.',
+      '30 minutes before bed: write down 3 things from today (any 3).',
+      '15 minutes before bed: box breathing (4 cycles).',
+      'In bed: body scan from feet to head. Notice without fixing.',
+    ],
+  },
+  {
+    id: 'professional-handoff',
+    title: 'Professional Connection',
+    duration: 'on your schedule',
+    description: 'Your patterns suggest this may benefit from professional support. This is a sign of strength, not weakness.',
+    tier: 'Level 3',
+    category: 'professional',
+    triggerSignals: ['mood_score', 'sleep_hours', 'response_time_min', 'breaks'],
+    instructions: [
+      'Your sustained pattern shifts suggest professional support could help.',
+      'This is not a diagnosis — it is an observation that care could make a difference.',
+      'Options: your primary care physician, a licensed therapist, or your EAP.',
+      'If in immediate crisis: 988 Suicide & Crisis Lifeline (call or text 988).',
+      'You are not alone. Reaching out is the bravest signal of all.',
+    ],
+  },
+];
 
-export type RiskTier = 'WATCHING' | 'ELEVATED' | 'CRITICAL';
+// ─── Match Intervention to Risk ──────────────────────────────────
 
-export interface SignalDeviation {
-  signal: string;
-  value: number;
-  baseline_mean: number;
-  baseline_std: number;
-  z_score: number;
-  weighted_z: number;
-  direction: 'better' | 'worse' | 'neutral';
-  status: 'normal' | 'watching' | 'elevated';
-}
-
-export interface RiskResult {
-  risk_index: number;           // 0-100
-  tier: RiskTier;
-  convergence_count: number;    // how many signals are deviating
-  temporal_cluster_factor: number;
-  signals: SignalDeviation[];
-  recommended_intervention: string;
-  explanation: string;
-  timestamp: string;
-}
-
-// ─── Weights ─────────────────────────────────────────────────────
-// Tuned to reflect clinical importance from literature.
-// Sleep and mood are strongest predictors per JAMA behavioral precursors study.
-
-const SIGNAL_WEIGHTS: Record<keyof SignalInput, number> = {
-  sleep_hours: 0.25,
-  meetings: 0.15,
-  response_time_min: 0.15,
-  breaks: 0.15,
-  mood_score: 0.20,
-  task_switches: 0.10,
-};
-
-// Whether higher values are "worse" (true) or "better" (false)
-const HIGHER_IS_WORSE: Record<keyof SignalInput, boolean> = {
-  sleep_hours: false,       // less sleep = worse
-  meetings: true,           // more meetings = worse
-  response_time_min: true,  // slower response = worse
-  breaks: false,            // fewer breaks = worse
-  mood_score: false,        // lower mood = worse
-  task_switches: true,      // more switching = worse
-};
-
-// ─── Default Baseline ────────────────────────────────────────────
-// Used when < 14 days of data — based on population norms
-
-export const DEFAULT_BASELINE: BaselineProfile = {
-  sleep_hours:       { mean: 7.2,  std: 0.8,  trend: 0 },
-  meetings:          { mean: 4.0,  std: 1.5,  trend: 0 },
-  response_time_min: { mean: 15.0, std: 8.0,  trend: 0 },
-  breaks:            { mean: 3.0,  std: 1.0,  trend: 0 },
-  mood_score:        { mean: 72.0, std: 10.0, trend: 0 },
-  task_switches:     { mean: 12.0, std: 4.0,  trend: 0 },
-  days_tracked: 0,
-};
-
-// ─── Z-Score Computation ─────────────────────────────────────────
-
-function computeZScore(value: number, mean: number, std: number): number {
-  if (std === 0) return 0;
-  return (value - mean) / std;
-}
-
-// ─── Temporal Cluster Factor ─────────────────────────────────────
-// If multiple signals are trending in the wrong direction simultaneously,
-// this factor amplifies the risk score. Single-signal spikes are dampened.
-
-function computeTemporalClusterFactor(deviations: SignalDeviation[]): number {
-  const deviatingCount = deviations.filter(d => Math.abs(d.z_score) > 1.0).length;
-  const totalSignals = deviations.length;
-
-  if (deviatingCount <= 1) return 0.8;  // single signal → dampened
-  if (deviatingCount === 2) return 1.0;  // two signals → neutral
-  if (deviatingCount === 3) return 1.2;  // three → amplified
-  if (deviatingCount === 4) return 1.4;  // four → strongly amplified
-  return 1.0 + (deviatingCount / totalSignals) * 0.8;  // 5+ → scaled
-}
-
-// ─── Risk Tier Classification ────────────────────────────────────
-
-function classifyRisk(score: number): RiskTier {
-  if (score < 40) return 'WATCHING';
-  if (score < 70) return 'ELEVATED';
-  return 'CRITICAL';
-}
-
-// ─── Signal Status ───────────────────────────────────────────────
-
-function classifySignalStatus(absZ: number): 'normal' | 'watching' | 'elevated' {
-  if (absZ < 1.0) return 'normal';
-  if (absZ < 2.0) return 'watching';
-  return 'elevated';
-}
-
-// ─── Intervention Selection ──────────────────────────────────────
-
-function selectIntervention(tier: RiskTier, topSignal: string): string {
-  const interventionMap: Record<RiskTier, Record<string, string>> = {
-    WATCHING: {
-      sleep_hours: 'Sleep hygiene reminder — consistent bedtime window',
-      meetings: 'Calendar audit — identify one meeting to decline',
-      response_time_min: 'Communication boundary — set status to focused',
-      breaks: 'Micro-break prompt — 5-minute walk',
-      mood_score: 'Reflection prompt — one gentle question',
-      task_switches: 'Focus block — 25-minute deep work timer',
-    },
-    ELEVATED: {
-      sleep_hours: 'Sleep reset protocol — guided wind-down sequence',
-      meetings: 'Calendar protect — block 90 minutes of recovery time',
-      response_time_min: 'Box breathing exercise — 4-minute reset',
-      breaks: 'Structured break schedule — 3 protected pauses today',
-      mood_score: 'Cognitive reframe exercise — thought restructuring',
-      task_switches: 'Single-task commitment — choose one priority',
-    },
-    CRITICAL: {
-      sleep_hours: 'Professional referral — sleep specialist consultation',
-      meetings: 'Workload escalation — suggest manager conversation',
-      response_time_min: 'Professional handoff — therapist connection',
-      breaks: 'Burnout prevention protocol — half-day recovery',
-      mood_score: 'Professional handoff — licensed therapist connection',
-      task_switches: 'Professional referral — cognitive load assessment',
-    },
-  };
-
-  return interventionMap[tier]?.[topSignal]
-    || interventionMap[tier]?.mood_score
-    || 'Box breathing exercise — 4-minute reset';
-}
-
-// ─── Generate Explanation ────────────────────────────────────────
-
-function generateExplanation(result: {
-  tier: RiskTier;
-  convergence_count: number;
-  signals: SignalDeviation[];
-  risk_index: number;
-}): string {
-  const worseSignals = result.signals
-    .filter(s => s.direction === 'worse' && s.status !== 'normal')
-    .sort((a, b) => Math.abs(b.z_score) - Math.abs(a.z_score));
-
-  if (worseSignals.length === 0) {
-    return `Your patterns are within your personal baseline. Risk index is ${Math.round(result.risk_index)}. No concerning deviations detected.`;
-  }
-
-  const topSignals = worseSignals.slice(0, 3).map(s => {
-    const label = s.signal.replace(/_/g, ' ');
-    const deviation = Math.abs(s.z_score).toFixed(1);
-    return `${label} (${deviation}σ from your norm)`;
-  });
-
-  const convergenceNote = result.convergence_count >= 3
-    ? ` Multiple signals are shifting together — this convergence pattern is clinically significant.`
-    : '';
-
-  return `Risk index: ${Math.round(result.risk_index)} (${result.tier}). ` +
-    `${result.convergence_count} signal${result.convergence_count !== 1 ? 's' : ''} deviating from your baseline: ` +
-    `${topSignals.join(', ')}.${convergenceNote}`;
-}
-
-// ─── MAIN: Compute Risk ──────────────────────────────────────────
-
-export function computeRisk(
-  input: SignalInput,
-  baseline: BaselineProfile = DEFAULT_BASELINE
-): RiskResult {
-  const signalKeys = Object.keys(SIGNAL_WEIGHTS) as (keyof SignalInput)[];
-
-  // Step 1: Compute per-signal Z-scores
-  const deviations: SignalDeviation[] = signalKeys.map(key => {
-    const value = input[key];
-    const bl = baseline[key];
-    const rawZ = computeZScore(value, bl.mean, bl.std);
-
-    // Directional Z-score: positive Z means "worse"
-    const directionalZ = HIGHER_IS_WORSE[key] ? rawZ : -rawZ;
-    const clampedZ = Math.max(0, directionalZ); // only count "worse" direction
-
-    const weightedZ = clampedZ * SIGNAL_WEIGHTS[key];
-
-    const direction: 'better' | 'worse' | 'neutral' =
-      clampedZ > 0.5 ? 'worse' : directionalZ < -0.5 ? 'better' : 'neutral';
-
-    return {
-      signal: key,
-      value,
-      baseline_mean: bl.mean,
-      baseline_std: bl.std,
-      z_score: directionalZ,
-      weighted_z: weightedZ,
-      direction,
-      status: classifySignalStatus(Math.abs(clampedZ)),
-    };
-  });
-
-  // Step 2: Convergence count
-  const convergenceCount = deviations.filter(d => d.direction === 'worse' && Math.abs(d.z_score) > 1.0).length;
-
-  // Step 3: Temporal cluster factor
-  const temporalClusterFactor = computeTemporalClusterFactor(deviations);
-
-  // Step 4: Composite Risk Index
-  const rawScore = deviations.reduce((sum, d) => sum + d.weighted_z, 0);
-
-  // Scale: raw weighted Z-scores typically range 0-0.5 for normal, up to 2+ for extreme
-  // We scale to 0-100 with the formula from the PDF
-  const scaledScore = rawScore * 40; // calibration factor
-  const riskIndex = Math.min(100, Math.max(0, scaledScore * temporalClusterFactor));
-
-  // Step 5: Classification
-  const tier = classifyRisk(riskIndex);
-
-  // Step 6: Top deviating signal for intervention matching
-  const topSignal = deviations
+export function selectIntervention(
+  tier: RiskTier,
+  deviations: SignalDeviation[],
+  previousInterventions: string[] = []
+): Intervention {
+  // Get the top deviating signal
+  const worseSignals = deviations
     .filter(d => d.direction === 'worse')
-    .sort((a, b) => Math.abs(b.z_score) - Math.abs(a.z_score))[0]?.signal || 'mood_score';
+    .sort((a, b) => Math.abs(b.z_score) - Math.abs(a.z_score))
+    .map(d => d.signal);
 
-  // Step 7: Select intervention
-  const recommendedIntervention = selectIntervention(tier, topSignal);
-
-  const result = {
-    risk_index: Math.round(riskIndex * 10) / 10,
-    tier,
-    convergence_count: convergenceCount,
-    temporal_cluster_factor: Math.round(temporalClusterFactor * 100) / 100,
-    signals: deviations,
-    recommended_intervention: recommendedIntervention,
-    explanation: '',
-    timestamp: new Date().toISOString(),
+  // Map tier to allowed intervention levels
+  const tierMap: Record<RiskTier, string[]> = {
+    'WATCHING': ['Level 1'],
+    'ELEVATED': ['Level 1', 'Level 2'],
+    'CRITICAL': ['Level 1', 'Level 2', 'Level 3'],
   };
 
-  result.explanation = generateExplanation(result);
+  const allowedLevels = tierMap[tier];
 
-  return result;
-}
+  // Score each intervention based on signal match
+  const scored = INTERVENTION_LIBRARY
+    .filter(i => allowedLevels.includes(i.tier))
+    .map(intervention => {
+      let score = 0;
 
-// ─── Batch Analysis (for sparkline history) ──────────────────────
+      // Signal match bonus (primary factor)
+      for (const signal of worseSignals) {
+        if (intervention.triggerSignals.includes(signal)) {
+          score += 10;
+        }
+      }
 
-export function computeRiskHistory(
-  history: SignalInput[],
-  baseline: BaselineProfile = DEFAULT_BASELINE
-): { day: number; risk: number; tier: RiskTier }[] {
-  return history.map((input, i) => {
-    const result = computeRisk(input, baseline);
-    return {
-      day: i + 1,
-      risk: result.risk_index,
-      tier: result.tier,
-    };
-  });
+      // Prefer higher-tier interventions for higher risk
+      if (tier === 'CRITICAL' && intervention.tier === 'Level 3') score += 5;
+      if (tier === 'ELEVATED' && intervention.tier === 'Level 2') score += 3;
+
+      // Variety bonus: prefer interventions not recently used
+      if (previousInterventions.includes(intervention.id)) score -= 3;
+
+      return { intervention, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  // Return the best match, or a default
+  return scored[0]?.intervention || INTERVENTION_LIBRARY[0];
 }
