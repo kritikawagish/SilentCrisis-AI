@@ -1,5 +1,5 @@
 /**
- * SilentCrisis AI — Data Persistence Layer
+ * SilentCrisis — Data Persistence Layer
  *
  * Stores check-in data in localStorage.
  * In production this would be encrypted + synced to a backend.
