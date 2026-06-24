@@ -24,7 +24,7 @@ export default function Footer() {
                   Quiet vigilance for mental wellness. Patterns spoken before crises whisper.
                 </p>
                 <p className="text-lg font-extralight text-star-faint mt-5">
-                  Est. 2025 · Early Warning Systems
+                  Early Warning Systems
                 </p>
               </div>
 
@@ -73,7 +73,7 @@ export default function Footer() {
           <div className="grid grid-cols-12">
             <div className="col-span-12 px-4 md:col-start-2 md:col-span-10 flex flex-col md:flex-row justify-between items-center gap-3">
               <p className="text-lg font-extralight text-star-faint">
-                © 2025 SilentCrisis AI · Patterns spoken, crises prevented
+                © {new Date().getFullYear()} SilentCrisis · Patterns spoken, crises prevented
               </p>
             </div>
           </div>
